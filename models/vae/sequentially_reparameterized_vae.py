@@ -12,11 +12,10 @@ from models.vae.abstract_vae import AbstractVAE
 
 
 class StubReparameterizer(object):
-    ''' A simple struct to hold the input and output size
-        since other modules directly query input and output sizes '''
+    ''' A simple struct to hold the input and output size since other modules directly query input and output sizes '''
     def __init__(self, input_size, output_size, input_reparameterizer, config):
-        self.config = config
-        self.input_size = input_size
+        self.config      = config
+        self.input_size  = input_size
         self.output_size = output_size
         self.input_reparameterizer = input_reparameterizer
 
@@ -27,15 +26,12 @@ class StubReparameterizer(object):
 class SequentiallyReparameterizedVAE(AbstractVAE):
     def __init__(self, input_shape, activation_fn=nn.ELU, num_current_model=0,
                  reparameterizer_strs=["discrete", "isotropic_gaussian"], **kwargs):
-        super(SequentiallyReparameterizedVAE, self).__init__(input_shape,
-                                                             activation_fn=activation_fn,
-                                                             num_current_model=num_current_model,
-                                                             **kwargs)
+        super(SequentiallyReparameterizedVAE, self).__init__(input_shape, activation_fn=activation_fn,
+                                                             num_current_model=num_current_model, **kwargs)
 
         # build the sequential set of reparameterizers
-        self.reparameterizer_strs = reparameterizer_strs
-        self.reparameterizers, self.reparameterizer \
-            = self._build_sequential_reparameterizers(reparameterizer_strs)
+        self.reparameterizer_strs                   = reparameterizer_strs
+        self.reparameterizers, self.reparameterizer = self._build_sequential_reparameterizers(reparameterizer_strs)
         print(self.reparameterizers)
 
         # build the encoder and decoder
@@ -103,7 +99,7 @@ class SequentiallyReparameterizedVAE(AbstractVAE):
             elif reparam_str == "discrete":
                 param_str += "cat{}_".format(str(self.config['discrete_size']))
 
-        return 'seqvae_' + super(SequentiallyReparameterizedVAE, self).get_name(param_str)
+        return 'seqvae_{}'.format(super(SequentiallyReparameterizedVAE, self).get_name(param_str))
 
     def has_discrete(self):
         ''' True is our FIRST parameterize is discrete '''
@@ -127,13 +123,12 @@ class SequentiallyReparameterizedVAE(AbstractVAE):
         z_logits = z.clone().view(batch_size, -1)
         for i, reparameterizer in enumerate(self.reparameterizers):
             if i > 0: # add a residual connection
-                self._lazy_init_dense(z_logits.size(-1), z.size(-1),
-                                      name="residual_%d"%i)
-                z = z + getattr(self, "residual_%d"%i)(z_logits)
+                self._lazy_init_dense(z_logits.size(-1), z.size(-1), name="residual_{}".format(i))
+                z = z + getattr(self, "residual_{}".format(i))(z_logits)
 
             z, params = reparameterizer(z.contiguous().view(batch_size, -1))
-            params_map['z_%d'%i] = z
-            params_map['params_%d'%i] = params
+            params_map['z_{}'.format(i)]      = z
+            params_map['params_{}'.format(i)] = params
 
         return z, params_map
 
@@ -141,14 +136,11 @@ class SequentiallyReparameterizedVAE(AbstractVAE):
         '''returns logits '''
         if self.config['use_relational_encoder']:
             # build a relational net as the encoder projection
-            self._lazy_init_relational(self.reparameterizer.input_size,
-                                       name='dec_proj')
+            self._lazy_init_relational(self.reparameterizer.input_size, name='dec_proj')
         else:
             # project via linear layer [if necessary!]
             z_output_shp = int(np.prod(z.size()[1:]))
-            self._lazy_init_dense(z_output_shp,
-                                  self.reparameterizer.output_size,
-                                  name='dec_proj')
+            self._lazy_init_dense(z_output_shp, self.reparameterizer.output_size, name='dec_proj')
 
         # project via decoder
         logits = self.decoder(self.dec_proj(z.contiguous()))

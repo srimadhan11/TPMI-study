@@ -13,8 +13,8 @@ from helpers.utils import to_data, expand_dims, \
 class RelationalNetwork(nn.Module):
     def __init__(self, hidden_size, output_size, cuda=False, ngpu=1):
         super(RelationalNetwork, self).__init__()
-        self.use_cuda = cuda
-        self.ngpu = ngpu
+        self.ngpu        = ngpu
+        self.use_cuda    = cuda
         self.hidden_size = hidden_size
         self.output_size = output_size
 
@@ -47,7 +47,6 @@ class RelationalNetwork(nn.Module):
                 nn.BatchNorm2d(latent_size),  # Input: :math:`(N, C, H, W)`
                 nn.ReLU(),
                 nn.Linear(self.hidden_size, self.hidden_size),
-                #nn.BatchNorm1d(self.hidden_size),
                 nn.BatchNorm2d(latent_size),
                 nn.ReLU(),
                 nn.Linear(self.hidden_size, output_size),
@@ -68,17 +67,16 @@ class RelationalNetwork(nn.Module):
 
         rn_buffer = [] # container to hold the tuples
 
-        for i in range(num_feat): # run over all features (the -1 from view above)
+        for i in range(num_feat):        # run over all features (the -1 from view above)
             chunk_i = conv_output[:, :, i].contiguous()
 
-            # for j in range(i+1, num_chans):
-            for j in range(num_feat): # run over all features (the -1 from view above)
+            for j in range(num_feat):    # run over all features (the -1 from view above)
                 chunk_j = conv_output[:, :, j].contiguous()
 
                 # flatten the chunks and merge them together
-                chunk_i = chunk_i.view(batch_size, 1, -1)  # eg: [100, 1, 24]
-                chunk_j = chunk_j.view(batch_size, 1, -1)  # eg: [100, 1, 24]
-                merged = torch.cat([chunk_i, chunk_j], -1) # eg: [100, 1, 48]
+                chunk_i = chunk_i.view(batch_size, 1, -1)    # eg: [100, 1, 24]
+                chunk_j = chunk_j.view(batch_size, 1, -1)    # eg: [100, 1, 24]
+                merged  = torch.cat([chunk_i, chunk_j], -1)  # eg: [100, 1, 48]
                 rn_buffer.append(merged)
 
         # aggregate the buffer
@@ -93,6 +91,6 @@ class RelationalNetwork(nn.Module):
                                output_size=self.hidden_size)
 
         # squeeze, reduce over the concatenations and project
-        rbo = torch.squeeze(self.rn(rn_buffer)) # eg: [100, 81, 128], does batch-matmul
-        rn_output = torch.sum(rbo, 1) # eg: [100, 128]
-        return self.proj(rn_output) # eg: [100, 2]
+        rbo       = torch.squeeze(self.rn(rn_buffer)) # eg: [100, 81, 128], does batch-matmul
+        rn_output = torch.sum(rbo, 1)                 # eg: [100, 128]
+        return self.proj(rn_output)                   # eg: [100, 2]

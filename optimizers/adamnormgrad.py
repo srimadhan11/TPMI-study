@@ -1,8 +1,8 @@
 from __future__ import print_function
 
 import torch
-from torch.autograd import Variable
 from torch.optim import Optimizer
+from torch.autograd import Variable
 
 import math
 
@@ -10,63 +10,46 @@ import math
 class AdamNormGrad(Optimizer):
     """Implements Adam-Norm-Grad algorithm. Taken from jmtomczak's github page.
 
-    It has been proposed in `Adam: A Method for Stochastic Optimization`_.
+    It has been proposed in `Adam: A Method for Stochastic Optimization: https://arxiv.org/abs/1412.6980
 
     Arguments:
-        params (iterable): iterable of parameters to optimize or dicts defining
-            parameter groups
-        lr (float, optional): learning rate (default: 1e-3)
-        betas (Tuple[float, float], optional): coefficients used for computing
-            running averages of gradient and its square (default: (0.9, 0.999))
-        eps (float, optional): term added to the denominator to improve
-            numerical stability (default: 1e-8)
-        weight_decay (float, optional): weight decay (L2 penalty) (default: 0)
-
-    .. _Adam\: A Method for Stochastic Optimization:
-        https://arxiv.org/abs/1412.6980
+        params (iterable)                    : iterable of parameters to optimize or dicts defining parameter groups
+        lr (float, optional)                 : learning rate (default: 1e-3)
+        betas (Tuple[float, float], optional): coefficients used for computing running averages of gradient and its square (default: (0.9, 0.999))
+        eps (float, optional)                : term added to the denominator to improve numerical stability (default: 1e-8)
+        weight_decay (float, optional)       : weight decay (L2 penalty) (default: 0)
     """
 
-    def __init__(self, params, lr=1e-3, betas=(0.9, 0.999), eps=1e-8,
-                 weight_decay=0):
-        defaults = dict(lr=lr, betas=betas, eps=eps,
-                        weight_decay=weight_decay)
+    def __init__(self, params, lr=1e-3, betas=(0.9, 0.999), eps=1e-8, weight_decay=0):
+        defaults = dict(lr=lr, betas=betas, eps=eps, weight_decay=weight_decay)
         super(AdamNormGrad, self).__init__(params, defaults)
 
     def step(self, closure=None):
         """Performs a single optimization step.
 
         Arguments:
-            closure (callable, optional): A closure that reevaluates the model
-                and returns the loss.
+            closure (callable, optional): A closure that reevaluates the model and returns the loss.
         """
-        loss = None
-        if closure is not None:
-            loss = closure()
+
+        loss = closure() if closure is not None else None
 
         for group in self.param_groups:
             for p in group['params']:
-                if p.grad is None:
-                    continue
+                if p.grad is None: continue
                 grad = p.grad.data
-                #############################################
-                # normalize grdients
-                grad = grad / ( torch.norm(grad,2) + 1.e-7 )
-                #############################################
+                grad = grad / ( torch.norm(grad, 2) + 1.e-7 )    # normalize grdients
 
                 state = self.state[p]
 
                 # State initialization
                 if len(state) == 0:
                     state['step'] = 0
-                    # Exponential moving average of gradient values
-                    state['exp_avg'] = grad.new().resize_as_(grad).zero_()
-                    # Exponential moving average of squared gradient values
-                    state['exp_avg_sq'] = grad.new().resize_as_(grad).zero_()
-
-                exp_avg, exp_avg_sq = state['exp_avg'], state['exp_avg_sq']
-                beta1, beta2 = group['betas']
+                    state['exp_avg']    = grad.new().resize_as_(grad).zero_()   # Exponential moving average of gradient values
+                    state['exp_avg_sq'] = grad.new().resize_as_(grad).zero_()   # Exponential moving average of squared gradient values
 
                 state['step'] += 1
+                beta1, beta2 = group['betas']
+                exp_avg, exp_avg_sq = state['exp_avg'], state['exp_avg_sq']
 
                 if group['weight_decay'] != 0:
                     grad = grad.add(group['weight_decay'], p.data)

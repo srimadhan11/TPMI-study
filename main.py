@@ -140,6 +140,8 @@ parser.add_argument('--no-cuda', action='store_true', default=False,
 args = parser.parse_args()
 args.cuda = not args.no_cuda and torch.cuda.is_available()
 
+torch.cuda.set_device(3)
+
 
 # handle randomness / non-randomness
 if args.seed is not None:
@@ -311,7 +313,7 @@ def generate(student_teacher, grapher, name='teacher'):
 def get_model_and_loader():
     ''' helper to return the model and the loader '''
     if args.disable_sequential: # vanilla batch training
-        loaders = get_loader(args)
+        loaders, _l = get_loader(args, also_non_merged=True)
         loaders = [loaders] if not isinstance(loaders, list) else loaders
     else: # classes split
         loaders = get_split_data_loaders(args, num_classes=10)
@@ -341,11 +343,11 @@ def get_model_and_loader():
     #student_teacher = init_weights(student_teacher)
 
     # build the grapher object
-    grapher = Grapher(env=student_teacher.get_name(),
+    grapher = Grapher(env=student_teacher.get_name()+'epoch0',
                       server=args.visdom_url,
                       port=args.visdom_port)
 
-    return [student_teacher, loaders, grapher]
+    return [student_teacher, (loaders, _l), grapher]
 
 
 def lazy_generate_modules(model, img_shp):
@@ -389,7 +391,7 @@ def eval_model(data_loaders, model, fid_model, args):
                           os.path.join(args.output_dir, "{}_fid.csv".format(args.uid)))
 
 
-def train_loop(data_loaders, model, fid_model, grapher, args):
+def train_loop(data_loaders, model, fid_model, grapher, args, test_loaders):
     ''' simple helper to run the entire train loop; not needed for eval modes'''
     optimizer = build_optimizer(model.student)     # collect our optimizer
     print("there are {} params with {} elems in the st-model and {} params in the student with {} elems".format(
@@ -445,12 +447,18 @@ def train_loop(data_loaders, model, fid_model, grapher, args):
         if args.calculate_fid_with is not None:
             # TODO: parameterize num fid samples, currently use less for inceptionv3 as it's COSTLY
             num_fid_samples = 4000 if args.calculate_fid_with != 'inceptionv3' else 1000
-            append_to_csv(calculate_fid(fid_model=fid_model,
-                                        model=model,
-                                        loader=loader, grapher=grapher,
-                                        num_samples=num_fid_samples,
-                                        cuda=args.cuda),
-                          os.path.join(args.output_dir, "{}_fid.csv".format(args.uid)))
+            for idx in range(j+1):
+                fid_score = calculate_fid(fid_model=fid_model, model=model,
+                                        loader=test_loaders[idx], grapher=grapher,
+                                        num_samples=num_fid_samples, cuda=args.cuda)
+                print(f'D{idx} FID Score: {fid_score}')
+                append_to_csv(fid_score, os.path.join(args.output_dir, "{}_fid.csv".format(args.uid)))
+                
+            print('for merged test loader')
+            fid_score = calculate_fid(fid_model=fid_model, model=model,
+                                    loader=loader, grapher=grapher,
+                                    num_samples=num_fid_samples, cuda=args.cuda)
+            append_to_csv(fid_score, os.path.join(args.output_dir, "{}_fid.csv".format(args.uid)))
 
         grapher.save() # save the remote visdom graphs
         if j != len(data_loaders) - 1:
@@ -483,7 +491,7 @@ def train_loop(data_loaders, model, fid_model, grapher, args):
                 # so that we can have a separate visdom env
                 model.current_model += 1
 
-            grapher = Grapher(env=model.get_name(),
+            grapher = Grapher(env=model.get_name()+f'epoch{j}',
                               server=args.visdom_url,
                               port=args.visdom_port)
 
@@ -525,7 +533,7 @@ def _set_model_indices(model, grapher, idx, args):
                 model.teacher = _init_vae(model.student.input_shape, config_teacher)
 
         # re-init grapher
-        grapher = Grapher(env=model.get_name(),
+        grapher = Grapher(env=model.get_name()+'_set_model_indices',
                           server=args.visdom_url,
                           port=args.visdom_port)
 
@@ -534,7 +542,7 @@ def _set_model_indices(model, grapher, idx, args):
 
 def run(args):
     # collect our model and data loader
-    model, data_loaders, grapher = get_model_and_loader()
+    model, (data_loaders, test_loaders), grapher = get_model_and_loader()
 
     # since some modules are lazy generated
     # we want to run a single fwd pass
@@ -551,7 +559,7 @@ def run(args):
     # handle logic on whether to start /resume training or to eval
     if args.eval_with is None and args.resume_training_with is None:              # normal train loop
         print("starting main training loop from scratch...")
-        train_loop(data_loaders, model, fid_model, grapher, args)
+        train_loop(data_loaders, model, fid_model, grapher, args, test_loaders)
     elif args.eval_with is None and args.resume_training_with is not None:    # resume training from latest model
         print("resuming training on model {}...".format(args.resume_training_with))
         model, grapher = _set_model_indices(model, grapher, args.resume_training_with, args)

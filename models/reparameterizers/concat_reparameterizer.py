@@ -18,18 +18,17 @@ class ConcatReparameterizer(nn.Module):
     def __init__(self, reparameterizer_list, config):
         super(ConcatReparameterizer, self).__init__()
         assert isinstance(reparameterizer_list, list)
-        self.config = config
+        self.config          = config
         self.reparmeterizers = reparameterizer_list
 
         # tabulate the input and output sizes
         self.input_size, self.output_size = 0, 0
         for reparameterizer in reparameterizer_list:
-            self.input_size += reparameterizer.input_size
+            self.input_size  += reparameterizer.input_size
             self.output_size += reparameterizer.output_size
 
     def prior(self, batch_size):
-        return [reparameterizer.prior(batch_size)
-                for reparameterizer in self.reparmeterizers]
+        return [reparameterizer.prior(batch_size) for reparameterizer in self.reparmeterizers]
 
     def mutual_info(self, params_list):
         assert isinstance(params_list, list)
@@ -39,7 +38,6 @@ class ConcatReparameterizer(nn.Module):
             if isinstance(reparameterizer, GumbelSoftmax):
                 mut_info_list.append(reparameterizer.mutual_info(params_list[current_params]))
                 current_params += 1
-
         return mut_info_list
 
     def log_likelihood(self, z_list, params_list):
@@ -52,9 +50,8 @@ class ConcatReparameterizer(nn.Module):
         ret_dict = {}
         for i, (reparameterizer, logits) in enumerate(zip(self.reparmeterizers, logits_list)):
             z, params = reparameterizer(logits)
-            ret_dict['z_%d'%i] = z
-            ret_dict['params_%d'%i] = params
-
+            ret_dict['z_{}'.format(i)]      = z
+            ret_dict['params_{}'.format(i)] = params
         return ret_dict
 
     def kl(self, dist_a_list):

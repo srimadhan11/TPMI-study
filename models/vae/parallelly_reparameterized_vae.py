@@ -50,12 +50,11 @@ class ParallellyReparameterizedVAE(AbstractVAE):
         else:
             raise Exception("unknown reparam type")
 
-        return 'parvae_' + super(ParallellyReparameterizedVAE, self).get_name(reparam_str)
+        return 'parvae_{}'.format(super(ParallellyReparameterizedVAE, self).get_name(reparam_str))
 
     def has_discrete(self):
         ''' True is we have a discrete reparameterization '''
-        return self.config['reparam_type'] == 'mixture' \
-            or self.config['reparam_type'] == 'discrete'
+        return self.config['reparam_type'] in ('mixture', 'discrete')
 
     def get_reparameterizer_scalars(self):
         ''' basically returns tau from reparameterizers for now '''
@@ -87,19 +86,6 @@ class ParallellyReparameterizedVAE(AbstractVAE):
         conv = self.encoder(x)         # do the convolution
         return conv
 
-        # if self.config['use_relational_encoder']:
-        #     # build a relational net as the encoder projection
-        #     self._lazy_init_relational(self.reparameterizer.input_size, name='enc_proj')
-        # else:
-        #     # project via linear layer [if necessary!]
-        #     conv_output_shp = int(np.prod(conv.size()[1:]))
-        #     self._lazy_init_dense(conv_output_shp,
-        #                           self.reparameterizer.input_size,
-        #                           name='enc_proj')
-
-        # # return projected units
-        # return self.enc_proj(conv)
-
     def generate(self, z):
         ''' reparameterizer for sequential is different '''
         return self.decode(z)
@@ -111,15 +97,11 @@ class ParallellyReparameterizedVAE(AbstractVAE):
     def mut_info(self, dist_params):
         ''' helper to get mutual info '''
         mut_info = None
-        if (self.config['reparam_type'] == 'mixture' \
-           or self.config['reparam_type'] == 'discrete')\
-           and not self.config['disable_regularizers']:
+        if self.config['reparam_type'] in ('mixture', 'discrete') and not self.config['disable_regularizers']:
             mut_info = self.reparameterizer.mutual_info(dist_params)
-
         return mut_info
 
     def loss_function(self, recon_x, x, params):
         ''' evaluates the loss of the model '''
         mut_info = self.mut_info(params)
-        return super(ParallellyReparameterizedVAE, self).loss_function(recon_x, x, params,
-                                                                       mut_info=mut_info)
+        return super(ParallellyReparameterizedVAE, self).loss_function(recon_x, x, params, mut_info=mut_info)

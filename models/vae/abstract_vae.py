@@ -20,13 +20,12 @@ class AbstractVAE(nn.Module):
     def __init__(self, input_shape, **kwargs):
         super(AbstractVAE, self).__init__()
         self.input_shape = input_shape
-        self.is_color = input_shape[0] > 1
-        self.chans = 3 if self.is_color else 1
+        self.is_color    = input_shape[0] > 1
+        self.chans       = 3 if self.is_color else 1
 
         # grab the meta config and print for
         self.config = kwargs['kwargs']
-        pp = pprint.PrettyPrinter(indent=4)
-        pp.pprint(self.config)
+        # pprint.PrettyPrinter(indent=4).pprint(self.config)
 
         # grab the activation nn.Module from the string
         self.activation_fn = str_to_activ_module(self.config['activation'])
@@ -36,8 +35,7 @@ class AbstractVAE(nn.Module):
 
     def get_name(self, reparam_str):
         ''' helper to get the name of the model '''
-        es_str = "es" + str(int(self.config['early_stop'])) if self.config['early_stop'] \
-                 else "epochs" + str(self.config['epochs'])
+        es_str = "es{}".format(int(self.config['early_stop'])) if self.config['early_stop'] else "epochs{}".format(self.config['epochs'])
         full_hash_str = "_{}_{}act{}_da{}_st{}{}_dr{}_re{}_pd{}_klr{}_gsv{}_mcig{}_mcs{}{}_input{}_batch{}_mut{}d{}c_filter{}_nll{}_lr{}_{}_ngpu{}".format(
             str(self.config['layer_type']),
             reparam_str,
@@ -63,18 +61,14 @@ class AbstractVAE(nn.Module):
             es_str,
             str(self.config['ngpu'])
         )
-        full_hash_str = full_hash_str.strip().lower().replace('[', '')  \
-                                                     .replace(']', '')  \
-                                                     .replace(' ', '')  \
-                                                     .replace('{', '') \
-                                                     .replace('}', '') \
-                                                     .replace(',', '_') \
-                                                     .replace(':', '') \
-                                                     .replace('(', '') \
-                                                     .replace(')', '') \
-                                                     .replace('\'', '')
-        task_cleaned = AbstractVAE._clean_task_str(self.config['task'])
-        return task_cleaned + full_hash_str
+
+        full_hash_str = full_hash_str.strip().lower()
+        full_hash_str = full_hash_str.replace(',', '_')
+        for s in "[] {}:()'":
+            full_hash_str = full_hash_str.replace(s, '')
+
+        task_cleaned = '{}{}'.format(AbstractVAE._clean_task_str(self.config['task']), full_hash_str)
+        return task_cleaned
 
 
     @staticmethod
@@ -86,9 +80,7 @@ class AbstractVAE(nn.Module):
             splits = Counter(task_str.split('+'))
             for k, v in splits.items():
                 result_str += '{}{}'.format(k, v)
-
             return result_str
-
         return task_str
 
     def build_encoder(self):
@@ -100,8 +92,7 @@ class AbstractVAE(nn.Module):
                                                         activation_fn=self.activation_fn)
                 raise NotImplementedError
             else:
-                conv_builder = build_gated_conv_encoder \
-                           if self.config['disable_gated_conv'] is False else build_conv_encoder
+                conv_builder = build_gated_conv_encoder if self.config['disable_gated_conv'] is False else build_conv_encoder
                 encoder = conv_builder(input_shape=self.input_shape,
                                        output_size=self.reparameterizer.input_size,
                                        filter_depth=self.config['filter_depth'],
@@ -127,8 +118,7 @@ class AbstractVAE(nn.Module):
     def build_decoder(self):
         ''' helper function to build convolutional or dense decoder'''
         if self.config['layer_type'] == 'conv':
-            conv_builder = build_gated_conv_decoder \
-                           if self.config['disable_gated_conv'] is False else build_conv_decoder
+            conv_builder = build_gated_conv_decoder if self.config['disable_gated_conv'] is False else build_conv_decoder
             decoder = nn.Sequential(
                 conv_builder(input_size=self.reparameterizer.output_size,
                              output_shape=self.input_shape,
@@ -162,9 +152,7 @@ class AbstractVAE(nn.Module):
         return decoder
 
     def _lazy_init_dense(self, input_size, output_size, name='enc_proj'):
-        '''initialize the dense linear projection lazily
-           because determining convolutional output size
-           is annoying '''
+        '''initialize the dense linear projection lazily because determining convolutional output size is annoying '''
         if not hasattr(self, name):
             # build a simple linear projector
             setattr(self, name, nn.Sequential(
@@ -173,17 +161,13 @@ class AbstractVAE(nn.Module):
             ))
 
             if self.config['ngpu'] > 1:
-                setattr(self, name,
-                        nn.DataParallel(getattr(self, name))
-                )
+                setattr(self, name, nn.DataParallel(getattr(self, name)))
 
             if self.config['cuda']:
                 setattr(self, name, getattr(self, name).cuda())
 
     def _lazy_init_relational(self, output_size, name='enc_proj'):
-        '''initialize a relational network lazily
-           because determining convolutional output size
-           is annoying '''
+        '''initialize a relational network lazily because determining convolutional output size is annoying '''
         if not hasattr(self, name):
             setattr(self, name, RelationalNetwork(hidden_size=512, #XXX
                                                   output_size=output_size,
@@ -191,18 +175,14 @@ class AbstractVAE(nn.Module):
                                                   ngpu=self.config['ngpu']))
 
             if self.config['ngpu'] > 1:
-                setattr(self, name,
-                        nn.DataParallel(getattr(self, name))
-                )
+                setattr(self, name, nn.DataParallel(getattr(self, name)))
 
             if self.config['cuda']:
                 setattr(self, name, getattr(self, name).cuda())
 
     def _project_decoder_for_variance(self, logits):
-        ''' if we have a nll with variance
-            then project it to the required dimensions '''
-        if self.config['nll_type'] == 'gaussian' \
-           or self.config['nll_type'] == 'clamp':
+        ''' if we have a nll with variance then project it to the required dimensions '''
+        if self.config['nll_type'] in ('gaussian', 'clamp'):
             if not hasattr(self, 'decoder_projector'):
                 if self.config['layer_type'] == 'conv':
                     self.decoder_projector = nn.Sequential(
@@ -233,7 +213,7 @@ class AbstractVAE(nn.Module):
             and returns one gigantic sequential_model '''
         if not self.full_model:
             full_model_list, _ = flatten_layers(self)
-            self.full_model = nn.Sequential(OrderedDict(full_model_list))
+            self.full_model    = nn.Sequential(OrderedDict(full_model_list))
 
     def nll_activation(self, logits):
         return nll_activation_fn(logits, self.config['nll_type'])
@@ -246,20 +226,18 @@ class AbstractVAE(nn.Module):
     def loss_function(self, recon_x, x, params, mut_info=None):
         # tf: elbo = -log_likelihood + latent_kl
         # tf: cost = elbo + consistency_kl - self.mutual_info_reg * mutual_info_regularizer
-        nll = nll_fn(x, recon_x, self.config['nll_type'])
-        kld = self.config['kl_reg'] * self.kld(params)
+        nll  = nll_fn(x, recon_x, self.config['nll_type'])
+        kld  = self.config['kl_reg'] * self.kld(params)
         elbo = nll + kld
 
         # handle the mutual information term
         if mut_info is None:
-            mut_info = Variable(
-                float_type(self.config['cuda'])(x.size(0)).zero_()
-            )
+            mut_info = Variable(float_type(self.config['cuda'])(x.size(0)).zero_())
         else:
             # Clamping strategies
             mut_clamp_strategy_map = {
-                'none': lambda mut_info: mut_info,
-                'norm': lambda mut_info: mut_info / torch.norm(mut_info, p=2),
+                'none' : lambda mut_info: mut_info,
+                'norm' : lambda mut_info: mut_info / torch.norm(mut_info, p=2),
                 'clamp': lambda mut_info: torch.clamp(mut_info,
                                                       min=-self.config['mut_clamp_value'],
                                                       max=self.config['mut_clamp_value'])
@@ -268,11 +246,11 @@ class AbstractVAE(nn.Module):
 
         loss = elbo - mut_info
         return {
-            'loss': loss,
-            'loss_mean': torch.mean(loss),
-            'elbo_mean': torch.mean(elbo),
-            'nll_mean': torch.mean(nll),
-            'kld_mean': torch.mean(kld),
+            'loss'         : loss,
+            'loss_mean'    : torch.mean(loss),
+            'elbo_mean'    : torch.mean(elbo),
+            'nll_mean'     : torch.mean(nll),
+            'kld_mean'     : torch.mean(kld),
             'mut_info_mean': torch.mean(mut_info)
         }
 
